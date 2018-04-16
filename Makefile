@@ -170,16 +170,19 @@ docker-push:
 
 openshift-deploy: openshift-undeploy
 	@if ! which envsubst > /dev/null 2>&1; then echo "You are missing 'envsubst'. Please install it and retry. If on MacOS, you can get this by installing the gettext package"; exit 1; fi
+	@if ! which istioctl > /dev/null 2>&1; then echo "You are missing 'istioctl'. Please install it and retry."i; exit 1; fi
 	@echo Deploying to OpenShift project ${NAMESPACE}
 	oc create -f deploy/openshift/kiali-configmap.yaml -n ${NAMESPACE}
-	cat deploy/openshift/kiali.yaml | IMAGE_NAME=${DOCKER_NAME} IMAGE_VERSION=${DOCKER_VERSION} NAMESPACE=${NAMESPACE} VERBOSE_MODE=${VERBOSE_MODE} envsubst | oc create -n ${NAMESPACE} -f -
-	@if ! which istioctl > /dev/null 2>&1; then echo "You are missing 'istioctl'. Please install it and retry."i; exit 1; fi
-	@echo TODO we need to inject the istio sidecar into kiali
+	cat deploy/openshift/kiali.yaml | IMAGE_NAME=${DOCKER_NAME} IMAGE_VERSION=${DOCKER_VERSION} NAMESPACE=${NAMESPACE} VERBOSE_MODE=${VERBOSE_MODE} envsubst | \
+	    istioctl kube-inject -n ${NAMESPACE} -f -  | \
+	    oc create -n ${NAMESPACE} -f -
 	istioctl create -n istio-system -f deploy/openshift/kiali-default-route.yaml
 
 openshift-undeploy: .openshift-validate
 	@echo Undeploying from OpenShift project ${NAMESPACE}
+	@if ! which istioctl > /dev/null 2>&1; then echo "You are missing 'istioctl'. Please install it and retry."i; exit 1; fi
 	oc delete all,secrets,sa,templates,configmaps,deployments,clusterroles,clusterrolebindings --selector=app=kiali -n ${NAMESPACE}
+	istioctl delete routerule kiali-default-route -n istio-system
 
 openshift-reload-image: .openshift-validate
 	@echo Refreshing image in OpenShift project ${NAMESPACE}
