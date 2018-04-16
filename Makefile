@@ -2,6 +2,7 @@
 # These will be embedded in the app and displayed when it starts.
 VERSION ?= 0.0.1.Final-SNAPSHOT
 COMMIT_HASH ?= $(shell git rev-parse HEAD)
+BRANCH=$(shell git branch | tail -1 | sed -e 's/* //' -e 's/_/-/g')
 
 # The minimum Go version that must be used to build the app.
 GO_VERSION_KIALI = 1.8.3
@@ -132,7 +133,17 @@ endif
 
 docker-build: .prepare-docker-image-files
 	@echo Building docker image into local docker daemon...
-	docker build -t ${DOCKER_TAG} _output/docker
+	## check for existing rule :   istioctl get routerule kiali-${BRANCH}-route -n istio-system | grep "No resources found."
+	@if [ "${BRANCH}" != "master" ]; then \
+		docker build -t ${DOCKER_NAME}:${BRANCH} _output/docker ; \
+		@istioctl get routerule kiali-${BRANCH}-route -n istio-system| grep "No resources found." ;
+		if [ "$$? != "0" ]; then \
+		    cat deploy/openshift/kiali-tag-route.yaml | TAG=${BRANCH} envsubst | istioctl create -n istio-system -f - ; \
+        fi
+	else \
+		docker build -t ${DOCKER_TAG} _output/docker ; \
+	fi
+		
 
 .prepare-minikube:
 	@minikube addons list | grep -q "ingress: enabled" ; \
@@ -162,6 +173,9 @@ openshift-deploy: openshift-undeploy
 	@echo Deploying to OpenShift project ${NAMESPACE}
 	oc create -f deploy/openshift/kiali-configmap.yaml -n ${NAMESPACE}
 	cat deploy/openshift/kiali.yaml | IMAGE_NAME=${DOCKER_NAME} IMAGE_VERSION=${DOCKER_VERSION} NAMESPACE=${NAMESPACE} VERBOSE_MODE=${VERBOSE_MODE} envsubst | oc create -n ${NAMESPACE} -f -
+	@if ! which istioctl > /dev/null 2>&1; then echo "You are missing 'istioctl'. Please install it and retry."i; exit 1; fi
+	@echo TODO we need to inject the istio sidecar into kiali
+	istioctl create -n istio-system -f deploy/openshift/kiali-default-route.yaml
 
 openshift-undeploy: .openshift-validate
 	@echo Undeploying from OpenShift project ${NAMESPACE}

@@ -1,0 +1,13 @@
+apiVersion: config.istio.io/v1alpha2
+kind: RouteRule
+metadata:
+  name: kiali-default-route
+  namespace: istio-system
+spec:
+  destination:
+    name: kiali
+  route:
+  - labels:
+      version: dev
+  precedence: 1
+
